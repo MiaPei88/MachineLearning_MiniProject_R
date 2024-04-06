@@ -1,12 +1,14 @@
 ##### Data Preparation #####
 ## Install and load required packages
-install.packages("vcfR")
+#install.packages("vcfR")
 library(vcfR)
 library(tidyverse)
 library(dplyr)
 library(stringr)
 library(randomForest)
 library(ggplot2)
+library(glmnet)
+library(pROC)
 
 
 
@@ -87,6 +89,52 @@ train_set <- combined_df_commonSNP[train.index,]
 test_set <- combined_df_commonSNP[-train.index,]
 
 ##### Model Training #####
+
+### Logistic Regression ###
+
+# Creating train and test sets for logistic glmnet function
+fit_train <- lm(population ~ ., data = train_set)
+X_train <- model.matrix(fit_train)[,-1]
+y_train <- train_set$population
+fit_test <- lm(population ~ ., data = test_set)
+X_test <- model.matrix(fit_test)[,-1]
+y_test <- test_set$population
+
+# Training logistic function via LASSO and measuring CV error with AUC
+logistic_train <- cv.glmnet(X_train ,y_train, nfolds = 10, family="binomial", alpha=1, type.measure = "auc")
+plot(logistic_train)
+
+# Determining test performance for list of lambda values between lambda.min and lambda.1se
+lambda <- sort(logistic_train$lambda)
+wh <- which(lambda >= logistic_train$lambda.min & lambda <= logistic_train$lambda.1se)  
+sps.set <- lambda[wh]
+prd.sps.set <- predict(logistic_train,newx=X_test,s=sps.set )
+
+# Visualizing performance of lambda values on test set
+mse <- function (i,y) {
+  mean ( (y-i)^2 ) }
+mse.sps.set <- apply(prd.sps.set,2,mse,y_test)
+par(mfrow=c(1,1))
+plot(sps.set,mse.sps.set, main = "AUC vs lambda", xlab = "lambda", ylab = "AUC")
+
+# Predicting on the test set using lambda.min and lambda.1se models
+prds.test_min <- predict(logistic_train,newx = X_test, type = "response", s=logistic_train$lambda.min)[,1]
+prds.test_1se <- predict(logistic_train,newx = X_test, type = "response", s=logistic_train$lambda.1se)[,1]
+
+# Plotting ROC curves for lambda.min and lambda.1se test performance
+par(mfrow=c(1,2))
+auc.test_min <- roc(y_test,prds.test_min)
+auc.test_min
+plot(auc.test_min)
+auc.test_1se <- roc(y_test,prds.test_1se)
+auc.test_1se
+plot(auc.test_min)
+
+
+# Listing coefficients retained by lambda.1se
+coef.1se <- coef(logistic_train,s=logistic_train$lambda.1se)[,1]
+coef.1se[coef.1se!=0]
+
 ### Random Forests ###
 RF_train <- data.frame(lapply(train_set, as.factor))
 
