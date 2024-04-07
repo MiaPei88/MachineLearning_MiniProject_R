@@ -108,14 +108,15 @@ plot(logistic_train)
 lambda <- sort(logistic_train$lambda)
 wh <- which(lambda >= logistic_train$lambda.min & lambda <= logistic_train$lambda.1se)  
 sps.set <- lambda[wh]
-prd.sps.set <- predict(logistic_train,newx=X_test,s=sps.set )
+prd.sps.set <- predict(logistic_train,newx=X_test,s=sps.set , type="response")
 
 # Visualizing performance of lambda values on test set
-mse <- function (i,y) {
-  mean ( (y-i)^2 ) }
-mse.sps.set <- apply(prd.sps.set,2,mse,y_test)
+auc_score <- function (prediction, y) {
+  score <- roc(y, prediction)
+  as.numeric(score$auc)}
+auc.sps.set <- apply(prd.sps.set,2,auc_score,y_test)
 par(mfrow=c(1,1))
-plot(sps.set,mse.sps.set, main = "AUC vs lambda", xlab = "lambda", ylab = "AUC")
+plot(sps.set,auc.sps.set, main = "AUC vs lambda", xlab = "lambda", ylab = "AUC")
 
 # Predicting on the test set using lambda.min and lambda.1se models
 prds.test_min <- predict(logistic_train,newx = X_test, type = "response", s=logistic_train$lambda.min)[,1]
@@ -130,10 +131,9 @@ auc.test_1se <- roc(y_test,prds.test_1se)
 auc.test_1se
 plot(auc.test_min)
 
-
-# Listing coefficients retained by lambda.1se
-coef.1se <- coef(logistic_train,s=logistic_train$lambda.1se)[,1]
-coef.1se[coef.1se!=0]
+# Listing coefficients retained by lambda.min
+coef.min <- coef(logistic_train,s=logistic_train$lambda.min)[,1]
+coef.min[coef.min!=0]
 
 ### Random Forests ###
 RF_train <- data.frame(lapply(train_set, as.factor))
