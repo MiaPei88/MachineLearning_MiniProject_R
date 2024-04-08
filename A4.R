@@ -104,12 +104,6 @@ y_test <- test_set$population
 logistic_train <- cv.glmnet(X_train ,y_train, nfolds = 10, family="binomial", alpha=1, type.measure = "auc")
 plot(logistic_train)
 
-# Determining test performance for list of lambda values between lambda.min and lambda.1se
-lambda <- sort(logistic_train$lambda)
-wh <- which(lambda >= logistic_train$lambda.min & lambda <= logistic_train$lambda.1se)  
-sps.set <- lambda[wh]
-prd.sps.set <- predict(logistic_train,newx=X_test,s=sps.set , type="response")
-
 # Predicting on the test set using lambda.min and lambda.1se models
 prds.test_min <- predict(logistic_train,newx = X_test, type = "response", s=logistic_train$lambda.min)[,1]
 prds.test_1se <- predict(logistic_train,newx = X_test, type = "response", s=logistic_train$lambda.1se)[,1]
