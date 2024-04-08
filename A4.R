@@ -110,14 +110,6 @@ wh <- which(lambda >= logistic_train$lambda.min & lambda <= logistic_train$lambd
 sps.set <- lambda[wh]
 prd.sps.set <- predict(logistic_train,newx=X_test,s=sps.set , type="response")
 
-# Visualizing performance of lambda values on test set
-auc_score <- function (prediction, y) {
-  score <- roc(y, prediction)
-  as.numeric(score$auc)}
-auc.sps.set <- apply(prd.sps.set,2,auc_score,y_test)
-par(mfrow=c(1,1))
-plot(sps.set,auc.sps.set, main = "AUC vs lambda", xlab = "lambda", ylab = "AUC")
-
 # Predicting on the test set using lambda.min and lambda.1se models
 prds.test_min <- predict(logistic_train,newx = X_test, type = "response", s=logistic_train$lambda.min)[,1]
 prds.test_1se <- predict(logistic_train,newx = X_test, type = "response", s=logistic_train$lambda.1se)[,1]
