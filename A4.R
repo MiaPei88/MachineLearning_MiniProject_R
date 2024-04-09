@@ -137,17 +137,19 @@ prds.test_1se <- predict(logistic_train,
 par(mfrow=c(1,2))
 auc.test_min <- roc(y_test,prds.test_min)
 auc.test_min
-plot(auc.test_min)
+plot(auc.test_min, main = "ROC Curve for lambda.min")
 snsp.test_min <- cbind(auc.test_min$sensitivities,auc.test_min$specificities)
 indx <- which.max(apply(snsp.test_min,1,min))
 abline(h=snsp.test_min[indx,1],v=snsp.test_min[indx,2], col='blue', lty=2)
+text(0.6, 0.6, paste("AUC =", round(auc(auc.test_min), 3)), col = "#ff0000")
 
 auc.test_1se <- roc(y_test,prds.test_1se)
 auc.test_1se
-plot(auc.test_1se)
+plot(auc.test_1se, main = "ROC Curve for lambda.1se")
 snsp.test_1se <- cbind(auc.test_1se$sensitivities,auc.test_1se$specificities)
 indx2 <- which.max(apply(snsp.test_1se,1,min))
 abline(h=snsp.test_1se[indx2,1],v=snsp.test_1se[indx2,2], col='blue', lty=2)
+text(0.6, 0.6, paste("AUC =", round(auc(auc.test_1se), 3)), col = "#ff0000")
 par(mfrow=c(1,1))
 
 
@@ -176,7 +178,8 @@ cm_lasso <- plot_confusion_matrix(matrix_tibble_lasso,
                                   add_row_percentages = FALSE,
                                   palette = "Purples",
                                   sums_settings = sum_tile_settings(palette = "Oranges",
-                                                                    label = "Total"))
+                                                                    label = "Total")) +
+  ggtitle("Confusion Matrix Plot for Logistic Regression Classifier")
 
 plot(cm_lasso)
 
@@ -240,14 +243,15 @@ conf_mat
 
 # Visualize the confusion matrix
 conf_mat_melted <- as_tibble(conf_mat$table)
-plot_confusion_matrix(conf_mat_melted, target_col = "Reference", 
+RF_conf_mat <- plot_confusion_matrix(conf_mat_melted, target_col = "Reference", 
                       prediction_col = "Prediction", counts_col = "n", 
                       add_sums = TRUE, add_normalized = FALSE,
                       add_col_percentages = FALSE,
                       add_row_percentages = FALSE, palette = "Purples", 
                       sums_settings = sum_tile_settings(palette = "Oranges", 
-                                                        label = "Total"))
-
+                                                        label = "Total")) +
+  ggtitle("Confusion Matrix Plot for Random Forests Classifier")
+RF_conf_mat
 
 ## ROC-AUC
 # Calculate ROC of the prediction on test set
@@ -261,7 +265,7 @@ indx_rf
 snsp_rf[indx_rf,]
 
 # Visualize the ROC-AUC plot
-plot(roc_rf, main = "ROC Curve")
+plot(roc_rf, main = "ROC Curve for Random Forests Classifier")
 abline(h=snsp_rf[indx_rf,1],v=snsp_rf[indx_rf,2], col='blue', lty=2)
 text(0.6, 0.6, paste("AUC =", round(auc(roc_rf), 3)), col = "#ff0000")
 
@@ -269,7 +273,7 @@ text(0.6, 0.6, paste("AUC =", round(auc(roc_rf), 3)), col = "#ff0000")
 ### Decision Tree ###
 ## Model Training ##
 dt_model <- rpart(population ~ ., data = train_set, method = "class")
-par(mfrow = c(1,2), cex = 1)
+par(mfrow = c(1,1), cex = 1)
 summary(dt_model)
 fancyRpartPlot(dt_model, main = "Decision Tree Visualization for Full Tree")
 
