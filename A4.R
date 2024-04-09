@@ -87,6 +87,7 @@ train.index <- sample(1:nrow(combined_df_commonSNP), round(0.70*nrow(combined_df
 train_set <- combined_df_commonSNP[train.index,]
 test_set <- combined_df_commonSNP[-train.index,]
 
+
 ##### Model Training #####
 
 ### Logistic Regression ###
@@ -168,8 +169,7 @@ plot(cm_lasso)
 train_set$population <- as.factor(train_set$population)
 test_set$population <- as.factor(test_set$population)
 set.seed(3575) 
-RF_model <- randomForest(population ~ ., data = train_set, keep.forest = TRUE)
-forest_id <- RF_model$forest
+RF_model <- randomForest(population ~ ., data = train_set)
 
 # Check the model training result
 RF_model
@@ -197,7 +197,7 @@ trcontrol <- trainControl(method='repeatedcv',
                           search='grid')
 
 # Check the square root of number of variables and set the tuning range of mtry
-round(sqrt(ncol(RF_train)-1))
+round(sqrt(ncol(train_set)-1))
 tunegrid <- expand.grid(mtry = c(1:11)) 
 
 # Train the model using different mtry until it finds the best
