@@ -9,9 +9,8 @@ library(randomForest)
 library(ggplot2)
 library(glmnet)
 library(pROC)
-
-
-
+library(cvms)
+library(caret)
 ## Read in all the vcf files and extract the genotype information
 vcf_LCT_EUR <- read.vcfR("./filtered_LCT_EUR.vcf")
 geno_LCT_EUR <- extract.gt(vcf_LCT_EUR, element = "GT")
@@ -101,25 +100,68 @@ X_test <- model.matrix(fit_test)[,-1]
 y_test <- test_set$population
 
 # Training logistic function via LASSO and measuring CV error with AUC
-logistic_train <- cv.glmnet(X_train ,y_train, nfolds = 10, family="binomial", alpha=1, type.measure = "auc")
+logistic_train <- cv.glmnet(X_train ,y_train,
+                            nfolds = 10, family="binomial",
+                            alpha=1, type.measure = "auc")
+par(mfrow=c(1,1))
 plot(logistic_train)
 
 # Predicting on the test set using lambda.min and lambda.1se models
-prds.test_min <- predict(logistic_train,newx = X_test, type = "response", s=logistic_train$lambda.min)[,1]
-prds.test_1se <- predict(logistic_train,newx = X_test, type = "response", s=logistic_train$lambda.1se)[,1]
+prds.test_min <- predict(logistic_train,
+                         newx = X_test,
+                         type = "response",
+                         s=logistic_train$lambda.min)[,1]
+prds.test_1se <- predict(logistic_train,
+                         newx = X_test,
+                         type = "response", 
+                         s=logistic_train$lambda.1se)[,1]
 
 # Plotting ROC curves for lambda.min and lambda.1se test performance
 par(mfrow=c(1,2))
 auc.test_min <- roc(y_test,prds.test_min)
 auc.test_min
 plot(auc.test_min)
+snsp.test_min <- cbind(auc.test_min$sensitivities,auc.test_min$specificities)
+indx <- which.max(apply(snsp.test_min,1,min))
+abline(h=snsp.test_min[indx,1],v=snsp.test_min[indx,2], col='blue', lty=2)
+
 auc.test_1se <- roc(y_test,prds.test_1se)
 auc.test_1se
-plot(auc.test_min)
+plot(auc.test_1se)
+snsp.test_1se <- cbind(auc.test_1se$sensitivities,auc.test_1se$specificities)
+indx2 <- which.max(apply(snsp.test_1se,1,min))
+abline(h=snsp.test_1se[indx2,1],v=snsp.test_1se[indx2,2], col='blue', lty=2)
+par(mfrow=c(1,1))
+
 
 # Listing coefficients retained by lambda.min
 coef.min <- coef(logistic_train,s=logistic_train$lambda.min)[,1]
 coef.min[coef.min!=0]
+sort(abs(coef.min[coef.min!=0]), decreasing = T)
+names(sort(abs(coef.min[coef.min!=0]), decreasing = T))[-1]
+
+#Confusion Matrix for lambda.min
+pred_class_lasso <- ifelse(prds.test_min > 0.5, 1, 0)
+matrix_table <- table(observed = y_test,
+                      predicted = pred_class_lasso)
+
+# Store the table as a tibble
+matrix_tibble <- as_tibble(matrix_table)
+
+# Plot the tibble as a confusion matrix plot
+cm_lasso <- plot_confusion_matrix(matrix_tibble,
+                                  target_col = "observed",
+                                  prediction_col = "predicted",
+                                  counts_col = "n",
+                                  add_sums = TRUE,
+                                  add_normalized = FALSE,
+                                  add_col_percentages = FALSE,
+                                  add_row_percentages = FALSE,
+                                  palette = "Purples",
+                                  sums_settings = sum_tile_settings(palette = "Oranges",
+                                                                    label = "Total"))
+
+plot(cm_lasso)
 
 ### Random Forests ###
 RF_train <- data.frame(lapply(train_set, as.factor))
