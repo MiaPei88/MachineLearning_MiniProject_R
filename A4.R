@@ -8,9 +8,14 @@ library(stringr)
 library(randomForest)
 library(ggplot2)
 library(glmnet)
-library(pROC)
-library(cvms)
 library(caret)
+library(pROC)
+library(reshape2)
+library(cvms)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+
 ## Read in all the vcf files and extract the genotype information
 vcf_LCT_EUR <- read.vcfR("./filtered_LCT_EUR.vcf")
 geno_LCT_EUR <- extract.gt(vcf_LCT_EUR, element = "GT")
@@ -74,12 +79,7 @@ combined_df_commonSNP <- combined_df %>%
   select(-individual) %>%
   select(where(~ !any(is.na(.)))) %>%
   # move "population" column to the front
-  select(population, everything()) %>%
-  mutate(population = case_when(
-    population == "EUR" ~ 0,
-    population == "EAS" ~ 1,
-    TRUE ~ as.integer(NA)
-    ))
+  select(population, everything())
 
 ## Data splitting
 set.seed(3575) 
@@ -164,9 +164,159 @@ cm_lasso <- plot_confusion_matrix(matrix_tibble,
 plot(cm_lasso)
 
 ### Random Forests ###
-RF_train <- data.frame(lapply(train_set, as.factor))
+## Train the model
+train_set$population <- as.factor(train_set$population)
+test_set$population <- as.factor(test_set$population)
+set.seed(3575) 
+RF_model <- randomForest(population ~ ., data = train_set, keep.forest = TRUE)
+forest_id <- RF_model$forest
 
-RF_model <- randomForest(population ~ ., data = RF_train)
+# Check the model training result
 RF_model
+
+# Draw the OOB error rate plot of the model
 plot(RF_model)
+legend("topright", 
+       # Use the class names from the model to specify the colors of line
+       legend=colnames(RF_model$err.rate),  
+       col=c("black","red", "green"), 
+       lty=1, 
+       cex=0.6)
+
+# Check the variable importance
+varImpPlot(RF_model)
+
+
+## Tune parameter mtry 
+set.seed(3575)
+trcontrol <- trainControl(method='repeatedcv', 
+                          number=10, 
+                          repeats=1, 
+                          summaryFunction = twoClassSummary, 
+                          classProbs = TRUE,
+                          search='grid')
+
+# Check the square root of number of variables and set the tuning range of mtry
+round(sqrt(ncol(RF_train)-1))
+tunegrid <- expand.grid(mtry = c(1:11)) 
+
+# Train the model using different mtry until it finds the best
+system.time(tuned_RF <- train(population ~ ., 
+                  data = train_set,
+                  trControl = trcontrol,
+                  method = "rf",
+                  metric = "ROC",
+                  tuneGrid = tunegrid))
+
+# Check the tuned model
+print(tuned_RF)					   
+plot(tuned_RF)
+
+
+## Prediction
+# Predict on test set
+pred_test_rf <- predict(tuned_RF, newdata = test_set, type="prob")[,1]
+
+# Compute the confusion matrix
+pred_class_rf <- ifelse(pred_test_rf > 0.5, "EAS", "EUR")
+conf_mat <- confusionMatrix(as.factor(pred_class_rf), test_set$population)
+conf_mat
+
+# Visualize the confusion matrix
+conf_mat_melted <- as_tibble(conf_mat$table)
+plot_confusion_matrix(conf_mat_melted, target_col = "Reference", 
+                      prediction_col = "Prediction", counts_col = "n", 
+                      add_sums = TRUE, add_normalized = FALSE,
+                      add_col_percentages = FALSE,
+                      add_row_percentages = FALSE, palette = "Purples", 
+                      sums_settings = sum_tile_settings(palette = "Oranges", 
+                                                        label = "Total"))
+
+
+## ROC-AUC
+# Calculate ROC of the prediction on test set
+roc_rf <- roc(test_set$population, pred_test_rf)
+
+# Sensitivity and Specificities
+snsp_rf <- cbind(roc_rf$sensitivities, roc_rf$specificities)
+indx_rf <- which.max(apply(snsp_rf,1,min))
+cutoff_rf <- roc_rf$thresholds[indx_rf]
+indx_rf
+snsp_rf[indx_rf,]
+
+# Visualize the ROC-AUC plot
+plot(roc_rf, main = "ROC Curve")
+abline(h=snsp_rf[indx_rf,1],v=snsp_rf[indx_rf,2], col='blue', lty=2)
+text(0.6, 0.6, paste("AUC =", round(auc(roc_rf), 3)), col = "#ff0000")
+
+
+### Decision Tree ###
+## Model Training ##
+dt_model <- rpart(population ~ ., data = train_set, method = "class")
+par(mfrow = c(1,2), cex = 1)
+summary(dt_model)
+fancyRpartPlot(dt_model, main = "Decision Tree Visualization for Full Tree")
+
+
+## Tree Pruning ##
+prune.cp <- function(cptable){
+  CP <- cptable[,1]
+  cp <- sqrt(CP * c(Inf, CP[-length(CP)]))
+  xerr <- cptable[,4]
+  minrow <- which.min(xerr)
+  
+  xerr.1se <- sum(cptable[minrow,4:5])
+  index <- min(which(xerr < xerr.1se))
+  
+  cp.1se <- cp[index]
+  return(as.numeric(cp.1se) )}
+
+prune.cp(dt_model$cptable)
+pruned_tree <- prune(dt_model, cp = prune.cp(tree_model$cptable))
+summary(pruned_tree)
+par(mfrow = c(1,1), cex = 1.2)
+fancyRpartPlot(pruned_tree, main = "Decision Tree Visualization for Pruned Tree")
+
+
+## Model Validation ##
+# Predict using the pruned decision tree model on the test set
+pred_dt <- predict(pruned_tree, newdata = test_set, type = "class")
+
+
+## Confusion Matrix Plot
+# Create a confusion matrix in the table format
+matrix_table <- table(observed = test_set$population, predicted = pred_dt)
+
+# Store the table as a tibble
+matrix_tibble <- as_tibble(matrix_table)
+
+# Plot the tibble as a confusion matrix plot
+par(mfrow = c(1,2), cex = 1)
+cm_plot_3 <- plot_confusion_matrix(matrix_tibble, target_col = "observed",
+                                   prediction_col = "predicted", counts_col = "n",
+                                   add_sums = TRUE, add_normalized = FALSE,
+                                   add_col_percentages = FALSE, add_counts = TRUE,
+                                   add_row_percentages = FALSE, palette = "Purples",
+                                   sums_settings = sum_tile_settings(palette = "Oranges",
+                                                                     label = "Total")) +
+  ggtitle("Confusion Matrix Plot for Decision Tree Classifier")
+cm_plot_3
+
+
+## ROC-AUC
+# Calculate ROC of the prediction on test set
+roc_dt <- roc(test_set$population, as.numeric(pred_dt))
+
+# Sensitivity and Specificities
+snsp_dt <- cbind(roc_dt$sensitivities, roc_dt$specificities)
+indx_dt <- which.max(apply(snsp_dt,1,min))
+cutoff_dt <- roc_dt$thresholds[indx_dt]
+indx_dt
+snsp_dt[indx_dt,]
+
+# Visualize the ROC-AUC plot
+par(mfrow = c(1,1), cex = 1)
+plot(roc_dt, main = "ROC Curve for Decision Tree Classifier")
+abline(h = snsp_dt[indx_dt,1], v = snsp_dt[indx_dt,2], col = 'blue', lty = 2)
+text(0.6, 0.6, paste("AUC =", round(auc(roc_dt), 3)), col = "#ff0000")
 
