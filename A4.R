@@ -231,10 +231,13 @@ system.time(tuned_RF <- train(population ~ .,
 print(tuned_RF)					   
 plot(tuned_RF)
 
+set.seed(3575)
+RF_model_tuned <- randomForest(population ~ ., data = train_set, mtry = 9)
+RF_model_tuned
 
 ## Prediction
 # Predict on test set
-pred_test_rf <- predict(tuned_RF, newdata = test_set, type="prob")[,1]
+pred_test_rf <- predict(RF_model_tuned, newdata = test_set, type="prob")[,1]
 
 # Compute the confusion matrix
 pred_class_rf <- ifelse(pred_test_rf > 0.5, "EAS", "EUR")
