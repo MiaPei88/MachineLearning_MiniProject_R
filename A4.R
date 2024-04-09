@@ -81,25 +81,41 @@ combined_df_commonSNP <- combined_df %>%
   # move "population" column to the front
   select(population, everything())
 
+combined_logit <- combined_df %>%
+  # remove "individual" column
+  select(-individual) %>%
+  select(where(~ !any(is.na(.)))) %>%
+  # move "population" column to the front
+  select(population, everything()) %>%
+  mutate(population = case_when(
+    population == "EUR" ~ 0,
+    population == "EAS" ~ 1,
+    TRUE ~ as.integer(NA)
+  ))
+
+
 ## Data splitting
 set.seed(3575) 
 train.index <- sample(1:nrow(combined_df_commonSNP), round(0.70*nrow(combined_df_commonSNP)))
 train_set <- combined_df_commonSNP[train.index,]
 test_set <- combined_df_commonSNP[-train.index,]
+train_set_logit <- combined_logit[train.index,]
+test_set_logit <- combined_logit[-train.index,]
 
 ##### Model Training #####
 
 ### Logistic Regression ###
 
 # Creating train and test sets for logistic glmnet function
-fit_train <- lm(population ~ ., data = train_set)
+fit_train <- lm(population ~ ., data = train_set_logit)
 X_train <- model.matrix(fit_train)[,-1]
-y_train <- train_set$population
-fit_test <- lm(population ~ ., data = test_set)
+y_train <- train_set_logit$population
+fit_test <- lm(population ~ ., data = test_set_logit)
 X_test <- model.matrix(fit_test)[,-1]
-y_test <- test_set$population
+y_test <- test_set_logit$population
 
 # Training logistic function via LASSO and measuring CV error with AUC
+set.seed(3575)
 logistic_train <- cv.glmnet(X_train ,y_train,
                             nfolds = 10, family="binomial",
                             alpha=1, type.measure = "auc")
@@ -142,14 +158,14 @@ names(sort(abs(coef.min[coef.min!=0]), decreasing = T))[-1]
 
 #Confusion Matrix for lambda.min
 pred_class_lasso <- ifelse(prds.test_min > 0.5, 1, 0)
-matrix_table <- table(observed = y_test,
+matrix_table_lasso <- table(observed = y_test,
                       predicted = pred_class_lasso)
 
 # Store the table as a tibble
-matrix_tibble <- as_tibble(matrix_table)
+matrix_tibble_lasso <- as_tibble(matrix_table_lasso)
 
 # Plot the tibble as a confusion matrix plot
-cm_lasso <- plot_confusion_matrix(matrix_tibble,
+cm_lasso <- plot_confusion_matrix(matrix_tibble_lasso,
                                   target_col = "observed",
                                   prediction_col = "predicted",
                                   counts_col = "n",
@@ -197,7 +213,7 @@ trcontrol <- trainControl(method='repeatedcv',
                           search='grid')
 
 # Check the square root of number of variables and set the tuning range of mtry
-round(sqrt(ncol(RF_train)-1))
+round(sqrt(ncol(train_set)-1))
 tunegrid <- expand.grid(mtry = c(1:11)) 
 
 # Train the model using different mtry until it finds the best
@@ -272,7 +288,7 @@ prune.cp <- function(cptable){
   return(as.numeric(cp.1se) )}
 
 prune.cp(dt_model$cptable)
-pruned_tree <- prune(dt_model, cp = prune.cp(tree_model$cptable))
+pruned_tree <- prune(dt_model, cp = prune.cp(dt_model$cptable))
 summary(pruned_tree)
 par(mfrow = c(1,1), cex = 1.2)
 fancyRpartPlot(pruned_tree, main = "Decision Tree Visualization for Pruned Tree")
