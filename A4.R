@@ -122,6 +122,8 @@ logistic_train <- cv.glmnet(X_train ,y_train,
                             alpha=1, type.measure = "auc")
 par(mfrow=c(1,1))
 plot(logistic_train)
+title(main="Lambda vs AUC for Cross-validated LASSO Model", line=3) 
+
 
 # Predicting on the test set using lambda.min and lambda.1se models
 prds.test_min <- predict(logistic_train,
@@ -229,11 +231,12 @@ system.time(tuned_RF <- train(population ~ .,
 
 # Check the tuned model
 print(tuned_RF)					   
-plot(tuned_RF)
+plot(tuned_RF, main="ROC vs mtry for Random Forest Model") 
 
 set.seed(3575)
 RF_model_tuned <- randomForest(population ~ ., data = train_set, mtry = 9)
 RF_model_tuned
+
 
 ## Prediction
 # Predict on test set
@@ -253,14 +256,14 @@ RF_conf_mat <- plot_confusion_matrix(conf_mat_melted, target_col = "Reference",
                       add_row_percentages = FALSE, palette = "Purples", 
                       sums_settings = sum_tile_settings(palette = "Oranges", 
                                                         label = "Total")) +
-  ggtitle("Confusion Matrix Plot for Random Forests Classifier")
+  ggtitle("Confusion Matrix Plot for Random Forest Classifier")
 RF_conf_mat
 
 ## ROC-AUC
 # Calculate ROC of the prediction on test set
 roc_rf <- roc(test_set$population, pred_test_rf)
 
-# Sensitivity and Specificities
+# Sensitivity and Specificity
 snsp_rf <- cbind(roc_rf$sensitivities, roc_rf$specificities)
 indx_rf <- which.max(apply(snsp_rf,1,min))
 cutoff_rf <- roc_rf$thresholds[indx_rf]
